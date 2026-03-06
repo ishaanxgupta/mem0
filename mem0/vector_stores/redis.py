@@ -25,7 +25,7 @@ DEFAULT_FIELDS = [
     {"name": "user_id", "type": "tag"},
     {"name": "memory", "type": "text"},
     {"name": "metadata", "type": "text"},
-    # TODO: Although it is numeric but also accepts string
+    # TODO: Ensure these numeric fields are correctly handled in filters as numeric types.
     {"name": "created_at", "type": "numeric"},
     {"name": "updated_at", "type": "numeric"},
     {
@@ -60,14 +60,14 @@ class RedisDB(VectorStoreBase):
             collection_name (str): Collection name.
             embedding_model_dims (int): Embedding model dimensions.
         """
-        self.embedding_model_dims = embedding_model_dims
+        self.embedding_model_dims = int(embedding_model_dims)
         index_schema = {
             "name": collection_name,
             "prefix": f"mem0:{collection_name}",
         }
 
         fields = DEFAULT_FIELDS.copy()
-        fields[-1]["attrs"]["dims"] = embedding_model_dims
+        fields[-1]["attrs"]["dims"] = self.embedding_model_dims
 
         self.schema = {"index": index_schema, "fields": fields}
 
@@ -90,7 +90,7 @@ class RedisDB(VectorStoreBase):
         """
         # Use provided parameters or fall back to instance attributes
         collection_name = name or self.schema["index"]["name"]
-        embedding_dims = vector_size or self.embedding_model_dims
+        embedding_dims = int(vector_size) if vector_size else self.embedding_model_dims
         distance_metric = distance or "cosine"
 
         # Create a new schema with the specified parameters
