@@ -479,7 +479,8 @@ class Memory(MemoryBase):
                 filters=search_filters,
             )
             for mem in existing_memories:
-                retrieved_old_memory.append({"id": mem.id, "text": mem.payload.get("data", "")})
+                retrieved_old_memory.append(
+                    {"id": mem.id, "text": mem.payload.get("data", ""), "payload": mem.payload})
 
         unique_data = {}
         for item in retrieved_old_memory:
@@ -519,6 +520,9 @@ class Memory(MemoryBase):
                 new_memories_with_actions = {}
         else:
             new_memories_with_actions = {}
+
+        existing_memory_payloads = {item["id"]: item["payload"]
+                                    for item in retrieved_old_memory if "payload" in item}
 
         returned_memories = []
         try:
@@ -567,8 +571,12 @@ class Memory(MemoryBase):
                         memory_id = temp_uuid_mapping.get(resp.get("id"))
                         if memory_id and (metadata.get("agent_id") or metadata.get("run_id")):
                             # Update only the session identifiers, keep content the same
-                            existing_memory = self.vector_store.get(vector_id=memory_id)
-                            updated_metadata = deepcopy(existing_memory.payload)
+                            existing_payload = existing_memory_payloads.get(memory_id)
+                            if not existing_payload:
+                                existing_memory = self.vector_store.get(vector_id=memory_id)
+                                existing_payload = existing_memory.payload
+
+                            updated_metadata = deepcopy(existing_payload)
                             if metadata.get("agent_id"):
                                 updated_metadata["agent_id"] = metadata["agent_id"]
                             if metadata.get("run_id"):
@@ -1506,7 +1514,8 @@ class AsyncMemory(MemoryBase):
                 limit=5,
                 filters=search_filters,
             )
-            return [{"id": mem.id, "text": mem.payload.get("data", "")} for mem in existing_mems]
+            return [{"id": mem.id, "text": mem.payload.get("data", ""),
+                     "payload": mem.payload} for mem in existing_mems]
 
         search_tasks = [process_fact_for_search(fact) for fact in new_retrieved_facts]
         search_results_list = await asyncio.gather(*search_tasks)
@@ -1549,6 +1558,9 @@ class AsyncMemory(MemoryBase):
         else:
             new_memories_with_actions = {}
 
+        existing_memory_payloads = {item["id"]: item["payload"]
+                                    for item in retrieved_old_memory if "payload" in item}
+
         returned_memories = []
         try:
             memory_tasks = []
@@ -1588,13 +1600,21 @@ class AsyncMemory(MemoryBase):
                         if memory_id and (metadata.get("agent_id") or metadata.get("run_id")):
                             # Create async task to update only the session identifiers
                             async def update_session_ids(mem_id, meta):
-                                existing_memory = await asyncio.to_thread(self.vector_store.get, vector_id=mem_id)
-                                updated_metadata = deepcopy(existing_memory.payload)
+                                existing_payload = existing_memory_payloads.get(mem_id)
+                                if not existing_payload:
+                                    existing_memory = await asyncio.to_thread(
+                                        self.vector_store.get, vector_id=mem_id
+                                    )
+                                    existing_payload = existing_memory.payload
+
+                                updated_metadata = deepcopy(existing_payload)
                                 if meta.get("agent_id"):
                                     updated_metadata["agent_id"] = meta["agent_id"]
                                 if meta.get("run_id"):
                                     updated_metadata["run_id"] = meta["run_id"]
-                                updated_metadata["updated_at"] = datetime.now(pytz.timezone("US/Pacific")).isoformat()
+                                updated_metadata["updated_at"] = datetime.now(
+                                    pytz.timezone("US/Pacific")
+                                ).isoformat()
 
                                 await asyncio.to_thread(
                                     self.vector_store.update,
