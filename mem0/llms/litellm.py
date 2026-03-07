@@ -1,4 +1,3 @@
-import json
 from typing import Dict, List, Optional
 
 try:
@@ -8,7 +7,6 @@ except ImportError:
 
 from mem0.configs.llms.base import BaseLlmConfig
 from mem0.llms.base import LLMBase
-from mem0.memory.utils import extract_json
 
 
 class LiteLLM(LLMBase):
@@ -18,35 +16,17 @@ class LiteLLM(LLMBase):
         if not self.config.model:
             self.config.model = "gpt-4.1-nano-2025-04-14"
 
-    def _parse_response(self, response, tools):
+    def _parse_response(self, response):
         """
-        Process the response based on whether tools are used or not.
+        Process the response.
 
         Args:
             response: The raw response from API.
-            tools: The list of tools provided in the request.
 
         Returns:
-            str or dict: The processed response.
+            str: The processed response.
         """
-        if tools:
-            processed_response = {
-                "content": response.choices[0].message.content,
-                "tool_calls": [],
-            }
-
-            if response.choices[0].message.tool_calls:
-                for tool_call in response.choices[0].message.tool_calls:
-                    processed_response["tool_calls"].append(
-                        {
-                            "name": tool_call.function.name,
-                            "arguments": json.loads(extract_json(tool_call.function.arguments)),
-                        }
-                    )
-
-            return processed_response
-        else:
-            return response.choices[0].message.content
+        return response.choices[0].message.content
 
     def generate_response(
         self,
@@ -67,9 +47,6 @@ class LiteLLM(LLMBase):
         Returns:
             str: The generated response.
         """
-        if not litellm.supports_function_calling(self.config.model):
-            raise ValueError(f"Model '{self.config.model}' in litellm does not support function calling.")
-
         params = {
             "model": self.config.model,
             "messages": messages,
@@ -79,9 +56,5 @@ class LiteLLM(LLMBase):
         }
         if response_format:
             params["response_format"] = response_format
-        if tools:  # TODO: Remove tools if no issues found with new memory addition logic
-            params["tools"] = tools
-            params["tool_choice"] = tool_choice
-
         response = litellm.completion(**params)
-        return self._parse_response(response, tools)
+        return self._parse_response(response)
