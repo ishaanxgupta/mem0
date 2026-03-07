@@ -103,7 +103,7 @@ class Completions:
         prepared_messages = self._prepare_messages(messages)
         if prepared_messages[-1]["role"] == "user":
             self._async_add_to_memory(messages, user_id, agent_id, run_id, metadata, filters)
-            relevant_memories = self._fetch_relevant_memories(messages, user_id, agent_id, run_id, filters, limit)
+            relevant_memories = self._fetch_relevant_memories(model, messages, user_id, agent_id, run_id, filters, limit)
             logger.debug(f"Retrieved {len(relevant_memories)} relevant memories")
             prepared_messages[-1]["content"] = self._format_query_with_memories(messages, relevant_memories)
 
@@ -163,12 +163,24 @@ class Completions:
 
         threading.Thread(target=add_task, daemon=True).start()
 
-    def _fetch_relevant_memories(self, messages, user_id, agent_id, run_id, filters, limit):
-        # Currently, only pass the last 6 messages to the search API to prevent long query
-        message_input = [f"{message['role']}: {message['content']}" for message in messages][-6:]
-        # TODO: Make it better by summarizing the past conversation
+    def _fetch_relevant_memories(self, model, messages, user_id, agent_id, run_id, filters, limit):
+        message_input = [f"{message['role']}: {message['content']}" for message in messages]
+
+        if len(messages) <= 6:
+            query = "\n".join(message_input)
+        else:
+            summary_prompt = (
+                "Summarize the following conversation in a concise and detailed manner, "
+                "capturing all the key points, entities, and context:\n\n" + "\n".join(message_input)
+            )
+            response = litellm.completion(
+                model=model,
+                messages=[{"role": "user", "content": summary_prompt}]
+            )
+            query = response.choices[0].message.content
+
         return self.mem0_client.search(
-            query="\n".join(message_input),
+            query=query,
             user_id=user_id,
             agent_id=agent_id,
             run_id=run_id,
