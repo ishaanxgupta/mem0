@@ -1585,7 +1585,7 @@ class AsyncMemory(MemoryBase):
                         )
                         memory_tasks.append((task, resp, "ADD", None))
                     elif event_type == "UPDATE":
-                        actual_id = temp_uuid_mapping[resp["id"]]
+                        actual_id = temp_uuid_mapping[resp.get("id")]
                         task = asyncio.create_task(
                             self._update_memory(
                                 memory_id=actual_id,
