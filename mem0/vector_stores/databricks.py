@@ -80,9 +80,11 @@ class Databricks(VectorStoreBase):
         self.catalog = catalog
         self.schema = schema
         self.table_name = table_name
-        self.fully_qualified_table_name = f"{self.catalog}.{self.schema}.{self.table_name}"
         self.index_name = collection_name
-        self.fully_qualified_index_name = f"{self.catalog}.{self.schema}.{self.index_name}"
+
+        # Properly escaped identifiers for SQL
+        self.fully_qualified_table_name = f"{self._escape_identifier(self.catalog)}.{self._escape_identifier(self.schema)}.{self._escape_identifier(self.table_name)}"
+        self.fully_qualified_index_name = f"{self._escape_identifier(self.catalog)}.{self._escape_identifier(self.schema)}.{self._escape_identifier(self.index_name)}"
 
         # Configuration
         self.index_type = index_type
@@ -261,7 +263,7 @@ class Databricks(VectorStoreBase):
             )
             logger.info(f"Successfully created source table '{self.fully_qualified_table_name}'")
             self.client.table_constraints.create(
-                full_name_arg="logistics_dev.ai.dev_memory",
+                full_name_arg=self.fully_qualified_table_name,
                 constraint=TableConstraint(
                     primary_key_constraint=PrimaryKeyConstraint(
                         name="pk_dev_memory",  # Name of the primary key constraint
@@ -272,6 +274,14 @@ class Databricks(VectorStoreBase):
             logger.info(
                 f"Successfully created primary key constraint on 'memory_id' for table '{self.fully_qualified_table_name}'"
             )
+
+    def _escape_identifier(self, identifier: str) -> str:
+        """
+        Escape a SQL identifier using backticks.
+        """
+        if not identifier:
+            return identifier
+        return f"`{identifier.replace('`', '``')}`"
 
     def create_col(self, name=None, vector_size=None, distance=None):
         """
@@ -404,7 +414,8 @@ class Databricks(VectorStoreBase):
             formatted = [self._format_sql_value(v) for v in values]
             value_tuples.append(f"({', '.join(formatted)})")
 
-        insert_sql = f"INSERT INTO {self.fully_qualified_table_name} ({', '.join(self.column_names)}) VALUES {', '.join(value_tuples)}"
+        escaped_column_names = [self._escape_identifier(col) for col in self.column_names]
+        insert_sql = f"INSERT INTO {self.fully_qualified_table_name} ({', '.join(escaped_column_names)}) VALUES {', '.join(value_tuples)}"
 
         # Execute the insert
         try:
@@ -494,7 +505,7 @@ class Databricks(VectorStoreBase):
         try:
             logger.info(f"Deleting vector with ID {vector_id} from Delta table {self.fully_qualified_table_name}")
 
-            delete_sql = f"DELETE FROM {self.fully_qualified_table_name} WHERE memory_id = '{vector_id}'"
+            delete_sql = f"DELETE FROM {self.fully_qualified_table_name} WHERE memory_id = {self._format_sql_value(vector_id)}"
 
             response = self.client.statement_execution.execute_statement(
                 statement=delete_sql, warehouse_id=self.warehouse_id, wait_timeout="30s"
@@ -528,20 +539,20 @@ class Databricks(VectorStoreBase):
             if not isinstance(vector, list):
                 logger.error("vector must be a list of float values")
                 return
-            set_clauses.append(f"embedding = {vector}")
+            set_clauses.append(f"embedding = {self._format_sql_value(vector)}")
         if payload:
             if not isinstance(payload, dict):
                 logger.error("payload must be a dictionary")
                 return
             for key, value in payload.items():
                 if key not in excluded_keys:
-                    set_clauses.append(f"{key} = '{value}'")
+                    set_clauses.append(f"{self._escape_identifier(key)} = {self._format_sql_value(value)}")
 
         if not set_clauses:
             logger.error("No fields to update")
             return
         update_sql += ", ".join(set_clauses)
-        update_sql += f" WHERE memory_id = '{vector_id}'"
+        update_sql += f" WHERE memory_id = {self._format_sql_value(vector_id)}"
         try:
             logger.info(f"Updating vector with ID {vector_id} in Delta table {self.fully_qualified_table_name}")
 
