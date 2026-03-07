@@ -148,7 +148,7 @@ def test_insert_generates_sql(db_instance_direct, mock_workspace_client):
     args, kwargs = mock_workspace_client.statement_execution.execute_statement.call_args
     sql = kwargs["statement"] if "statement" in kwargs else args[0]
     assert "INSERT INTO" in sql
-    assert "catalog.schema.table" in sql
+    assert "`catalog`.`schema`.`table`" in sql
     assert "id1" in sql
     # Embedding list rendered
     assert "array(0.1, 0.2, 0.3, 0.4)" in sql
@@ -217,7 +217,7 @@ def test_delete_vector(db_instance_delta, mock_workspace_client):
     db_instance_delta.delete("id-delete")
     args, kwargs = mock_workspace_client.statement_execution.execute_statement.call_args
     sql = kwargs.get("statement") or args[0]
-    assert "DELETE FROM" in sql and "id-delete" in sql
+    assert "DELETE FROM" in sql and "'id-delete'" in sql
 
 
 # ---------------------- Update Tests ---------------------- #
@@ -231,9 +231,9 @@ def test_update_vector(db_instance_direct, mock_workspace_client):
     )
     args, kwargs = mock_workspace_client.statement_execution.execute_statement.call_args
     sql = kwargs.get("statement") or args[0]
-    assert "UPDATE" in sql and "id-upd" in sql
-    assert "embedding = [0.4, 0.5, 0.6, 0.7]" in sql
-    assert "custom = 'val'" in sql
+    assert "UPDATE" in sql and "'id-upd'" in sql
+    assert "embedding = array(0.4, 0.5, 0.6, 0.7)" in sql
+    assert "`custom` = 'val'" in sql
     assert "user_id" not in sql  # excluded
 
 
